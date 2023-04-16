@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Network-go/elevio"
 	"Network-go/network/bcast"
 	"Network-go/network/localip"
 	"Network-go/network/peers"
@@ -106,6 +107,12 @@ func main() {
 				fmt.Println("Gonna process one request as ", curState)
 				if curState == types.Master {
 					if !request.Served {
+
+						if request.ButtonEvent.Button != elevio.BT_Cab && !CheckHallRequests(request) {
+							fmt.Println("New hall request append")
+							types.HallRequests = append(types.HallRequests, request)
+						}
+
 						if request.ReceiverId != types.Id {
 							fmt.Println("Received a request gonna acknowledge")
 							AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}
@@ -128,8 +135,8 @@ func main() {
 							AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}
 							RequestsToSingleElev <- request
 						} else if request.ServerId == "" {
-							fmt.Println("Will send it to master")
-							TransmitsInt <- request
+							fmt.Println("Its new should try myself first")
+							RequestsToSingleElev <- request
 						} else {
 
 						}
@@ -223,4 +230,13 @@ func main() {
 	}()
 
 	select {}
+}
+
+func CheckHallRequests(request types.RequestData) bool {
+	for _, listReq := range types.HallRequests {
+		if listReq.ButtonEvent == request.ButtonEvent {
+			return true
+		}
+	}
+	return false
 }
