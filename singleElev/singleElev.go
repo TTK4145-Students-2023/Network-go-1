@@ -17,7 +17,7 @@ const (
 	Door_Open State = 2
 )
 
-func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev chan types.RequestData, TransmitsInt chan types.RequestData) {
+func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev chan types.RequestData) {
 
 	numFloors := 4
 	current_floor := -1
@@ -77,15 +77,10 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 			fmt.Println("Button in order", a)
 			var light bool = true
 
-			types.StateIns.Mx.Lock()
-			curState := types.StateIns.State
-			types.StateIns.Mx.Unlock()
-
 			if current_state == Moving {
-				if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-					fmt.Println("I should ask this the master, gonna send")
+				if a.Button != elevio.BT_Cab && types.Id != b.ServerId {
 					b.ServerId = "ask"
-					TransmitsInt <- b
+					Requests <- b
 				} else {
 					if a.Floor < current_floor {
 						requests_down = append(requests_down, a)
@@ -102,10 +97,9 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 
 			} else if current_state == Idle {
 				if a.Floor < current_floor {
-					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						fmt.Println("I should ask this the master, gonna send")
+					if a.Button != elevio.BT_Cab && types.Id != b.ServerId {
 						b.ServerId = "ask"
-						TransmitsInt <- b
+						Requests <- b
 
 					} else {
 						fmt.Println("moving down")
@@ -118,10 +112,9 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 					}
 
 				} else if a.Floor > current_floor {
-					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						fmt.Println("I should ask this the master, gonna send")
+					if a.Button != elevio.BT_Cab && types.Id != b.ServerId {
 						b.ServerId = "ask"
-						TransmitsInt <- b
+						Requests <- b
 					} else {
 						fmt.Println("moving up")
 						requests_up = append(requests_up, a)
@@ -141,18 +134,16 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 
 			} else if current_state == Door_Open {
 				if a.Floor < current_floor {
-					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						fmt.Println("I should ask this the master, gonna send")
+					if a.Button != elevio.BT_Cab && types.Id != b.ServerId {
 						b.ServerId = "ask"
-						TransmitsInt <- b
+						Requests <- b
 					} else {
 						requests_down = append(requests_down, a)
 					}
 				} else if a.Floor > current_floor {
-					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						fmt.Println("I should ask this the master, gonna send")
+					if a.Button != elevio.BT_Cab && types.Id != b.ServerId {
 						b.ServerId = "ask"
-						TransmitsInt <- b
+						Requests <- b
 					} else {
 						requests_up = append(requests_up, a)
 					}
@@ -289,19 +280,14 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 					fmt.Printf("Door closing \n")
 					elevio.SetDoorOpenLamp(false)
 
-					types.StateIns.Mx.Lock()
-					curState := types.StateIns.State
-					types.StateIns.Mx.Unlock()
-
 					if indicated_direction == elevio.BT_HallUp && len(requests_up) > 0 {
 						d = elevio.MD_Up
 						elevio.SetMotorDirection(d)
 						current_state = Moving
 						indicated_direction = elevio.BT_Cab
 						if request_here.Valid {
-							if curState == types.Slave && request_here.Request.Button != elevio.BT_Cab {
-								fmt.Println("I should ask this the master, gonna send")
-								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask", RequestId: rand.Intn(1000000000)}
+							if request_here.Request.Button != elevio.BT_Cab {
+								Requests <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask", RequestId: rand.Intn(1000000000)}
 							} else {
 								requests_down = append(requests_down, request_here.Request)
 							}
@@ -314,9 +300,8 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 						current_state = Moving
 						indicated_direction = elevio.BT_Cab
 						if request_here.Valid {
-							if curState == types.Slave && request_here.Request.Button != elevio.BT_Cab {
-								fmt.Println("I should ask this the master, gonna send")
-								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask", RequestId: rand.Intn(1000000000)}
+							if request_here.Request.Button != elevio.BT_Cab {
+								Requests <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask", RequestId: rand.Intn(1000000000)}
 							} else {
 								requests_up = append(requests_up, request_here.Request)
 							}

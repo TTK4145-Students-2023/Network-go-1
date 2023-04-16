@@ -94,7 +94,7 @@ func main() {
 		}
 	}()
 
-	go singleElev.SingleElevatorRun(Requests, RequestsToSingleElev, TransmitsInt)
+	go singleElev.SingleElevatorRun(Requests, RequestsToSingleElev)
 
 	go func() {
 		for {
@@ -108,23 +108,26 @@ func main() {
 				fmt.Println("Gonna process one request as ", curState)
 				if curState == types.Master {
 					if !request.Served {
-						/*
-							if request.ButtonEvent.Button != elevio.BT_Cab && !CheckHallRequests(request) {
-								fmt.Println("New hall request append")
-								types.HallRequests = append(types.HallRequests, request)
-								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request.ButtonEvent, Served: false, ReceiverId: types.Id, ServerId: "info"}
+
+						if request.ServerId == "ask" && !CheckHallRequests(request) {
+							request.ServerId = request.ReceiverId
+							types.HallRequests = append(types.HallRequests, request)
+
+							if request.ReceiverId != types.Id {
+								fmt.Println("From slave, gonna acknowledge and order")
+								AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}
+								request.RequestId = rand.Intn(1000000000)
+								TransmitsInt <- request
+							} else {
+								fmt.Println("Its mine")
+								RequestsToSingleElev <- request
 							}
-						*/
-						if request.ReceiverId != types.Id {
-							fmt.Println("Received a request gonna acknowledge")
-							AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}
-							request.ServerId = request.ReceiverId
-							request.RequestId = rand.Intn(1000000000)
-							TransmitsInt <- request
+
 						} else {
-							fmt.Println("Its mine")
-							request.ServerId = request.ReceiverId
-							RequestsToSingleElev <- request
+							if request.ReceiverId != types.Id {
+								fmt.Println("From slave, gonna just acknowledge")
+								AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}
+							}
 						}
 					} else {
 
@@ -139,6 +142,9 @@ func main() {
 						} else if request.ServerId == "" {
 							fmt.Println("Its new should try myself first")
 							RequestsToSingleElev <- request
+						} else if request.ServerId == "ask" {
+							fmt.Println("I should ask this the master, gonna send")
+							TransmitsInt <- request
 						} else {
 
 						}
