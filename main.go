@@ -1,7 +1,6 @@
 package main
 
 import (
-	"Network-go/elevio"
 	"Network-go/network/bcast"
 	"Network-go/network/localip"
 	"Network-go/network/peers"
@@ -74,17 +73,19 @@ func main() {
 		for {
 			p := <-peerUpdateCh
 			types.StateIns.Mx.Lock()
-			if p.New != "" {
+			if p.New != "" && p.New != types.Id {
 				fmt.Println("Found new connection", p.New)
 				if (types.StateIns.State == types.Master && types.Id < p.New) || (types.StateIns.State == types.Slave && types.MasterId < p.New) {
-
+					fmt.Println("They will be slave")
 				} else if (types.StateIns.State == types.Master && types.Id > p.New) || (types.StateIns.State == types.Slave && types.MasterId > p.New) {
+					fmt.Println("I will be the slave")
 					types.MasterId = p.New
 					types.StateIns.State = types.Slave
 				}
 			} else if types.StateIns.State == types.Slave && ((len(p.Lost) > 0 && p.Lost[0] == types.MasterId) || (len(p.Lost) > 1 && p.Lost[1] == types.MasterId)) {
 				types.MasterId = ""
 				types.StateIns.State = types.Master
+				fmt.Println("Lost connection to the master, turning master")
 			}
 			types.StateIns.Mx.Unlock()
 			types.PeersIns.Mx.Lock()
@@ -107,12 +108,13 @@ func main() {
 				fmt.Println("Gonna process one request as ", curState)
 				if curState == types.Master {
 					if !request.Served {
-
-						if request.ButtonEvent.Button != elevio.BT_Cab && !CheckHallRequests(request) {
-							fmt.Println("New hall request append")
-							types.HallRequests = append(types.HallRequests, request)
-						}
-
+						/*
+							if request.ButtonEvent.Button != elevio.BT_Cab && !CheckHallRequests(request) {
+								fmt.Println("New hall request append")
+								types.HallRequests = append(types.HallRequests, request)
+								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request.ButtonEvent, Served: false, ReceiverId: types.Id, ServerId: "info"}
+							}
+						*/
 						if request.ReceiverId != types.Id {
 							fmt.Println("Received a request gonna acknowledge")
 							AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}

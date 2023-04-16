@@ -301,7 +301,7 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 						if request_here.Valid {
 							if curState == types.Slave && request_here.Request.Button != elevio.BT_Cab {
 								fmt.Println("I should ask this the master, gonna send")
-								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask"}
+								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask", RequestId: rand.Intn(1000000000)}
 							} else {
 								requests_down = append(requests_down, request_here.Request)
 							}
@@ -316,7 +316,7 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 						if request_here.Valid {
 							if curState == types.Slave && request_here.Request.Button != elevio.BT_Cab {
 								fmt.Println("I should ask this the master, gonna send")
-								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask"}
+								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: "ask", RequestId: rand.Intn(1000000000)}
 							} else {
 								requests_up = append(requests_up, request_here.Request)
 							}
