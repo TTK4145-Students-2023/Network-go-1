@@ -6,8 +6,10 @@ import (
 	"Network-go/network/peers"
 	"Network-go/singleElev"
 	"Network-go/types"
+	"container/list"
 	"flag"
 	"fmt"
+	"math/rand"
 	"os"
 	"time"
 )
@@ -49,18 +51,19 @@ func main() {
 	go peers.Receiver(31661, peerUpdateCh)
 
 	// We make channels for sending and receiving our custom data types
-	Transmits := make(chan RequestData)
-	RequestsIn := make(chan RequestData)
-	RequestsOut := make(chan RequestData)
-	AcknowledgementsIn := make(chan types.Acknowledgement)
-	AcknowledgementsOut := make(chan types.Acknowledgement)
+	TransmitsInt := make(chan types.RequestData, 5)
+	TransmitsOut := make(chan types.RequestData, 5)
+	Requests := make(chan types.RequestData, 5)
+	RequestsToSingleElev := make(chan types.RequestData, 5)
+	AcknowledgementsIn := make(chan types.Acknowledgement, 5)
+	AcknowledgementsOut := make(chan types.Acknowledgement, 5)
 	AskMaster := make(chan types.RequestData, 5)
 
 	// ... and start the transmitter/receiver pair on some port
 	// These functions can take any number of channels! It is also possible to
 	//  start multiple transmitters/receivers on the same port.
-	go bcast.Transmitter(31616, Transmits, AcknowledgementsOut)
-	go bcast.Receiver(31616, RequestsOut, AcknowledgementsIn)
+	go bcast.Transmitter(31616, TransmitsOut, AcknowledgementsOut)
+	go bcast.Receiver(31616, Requests, AcknowledgementsIn)
 
 	go func() {
 		types.StateIns.Mx.Lock()
@@ -87,51 +90,123 @@ func main() {
 		}
 	}()
 
-	go singleElev.SingleElevatorRun(Requests, AskMaster)
+	go singleElev.SingleElevatorRun(Requests, RequestsToSingleElev, AskMaster)
 
 	go func() {
 		for {
-			select{
-				case acknowledgement <- AcknowledgementsIn:
-					
-				case request <- RequestsOut:
-					
+			request := <-Requests
+
+			types.StateIns.Mx.Lock()
+			curState := types.StateIns.State
+			types.StateIns.Mx.Unlock()
+
+			if request.Valid {
+				AcknowledgementsOut <- request.RequestId
+
+				if curState == types.Master {
+					if !request.Served {
+						if request.ReceiverId != types.Id {
+							request.ServerId = request.ReceiverId
+							request.RequestId = types.Acknowledgement(rand.Intn(1000000000))
+							TransmitsInt <- request
+						} else {
+							request.ServerId = request.ReceiverId
+							RequestsToSingleElev <- request
+						}
+					} else {
+
+					}
+
+				} else {
+					if !request.Served {
+						if request.ServerId == types.Id {
+							RequestsToSingleElev <- request
+						} else {
+
+						}
+					} else {
+
+					}
+				}
 			}
 		}
-	}
-	
+	}()
 
-
-	var i int
-	var succesfull bool
-	for end := time.Now().Add(time.Millisecond * 10); ; {
-		if elevio.ListOfConnections.MessageSent[order.OrderId] {
-			succesfull = true
-			elevio.ListOfConnections.MessageSent[order.OrderId] = false
-			break
+	go func() {
+		types.Acknowledgements.Mx.Lock()
+		types.Acknowledgements.AcknowledgementsList = list.New()
+		types.Acknowledgements.Mx.Unlock()
+		for {
+			acknowledgementsIn := <-AcknowledgementsIn
+			types.Acknowledgements.Mx.Lock()
+			for item := types.Acknowledgements.AcknowledgementsList.Front(); item != nil; item = item.Next() {
+				if item.Value == acknowledgementsIn {
+					item.Value = -1
+				}
+			}
+			types.Acknowledgements.Mx.Unlock()
 		}
-		// elevio.ListOfConnections.Mx.Unlock()
+	}()
 
-		if i&0xff == 0 { // Check in every 256th iteration
-			if time.Now().After(end) {
-				succesfull = false
-				break
+	go func() {
+		for {
+			transmitRequest := <-TransmitsInt
+			types.Acknowledgements.Mx.Lock()
+			ackRef := types.Acknowledgements.AcknowledgementsList.PushBack(transmitRequest.RequestId)
+			types.Acknowledgements.Mx.Unlock()
+
+			count := 0
+			for {
+				TransmitsOut <- transmitRequest
+
+				var i int
+				var succesfull bool
+				for end := time.Now().Add(time.Millisecond * 10); ; {
+					if i&0xff == 0 { // Check in every 256th iteration
+						types.Acknowledgements.Mx.Lock()
+						succesfull = (ackRef.Value == types.Acknowledgement(-1))
+
+						if succesfull {
+							types.Acknowledgements.AcknowledgementsList.Remove(ackRef)
+							types.Acknowledgements.Mx.Unlock()
+							break
+						} else {
+							types.Acknowledgements.Mx.Unlock()
+						}
+
+						if time.Now().After(end) {
+							succesfull = false
+							break
+						}
+					}
+					i++
+				}
+
+				if succesfull {
+					fmt.Println("Succesfully sent one req")
+					break
+				} else {
+					fmt.Println("Sent one req but no acknowledgement")
+					count++
+				}
+
+				if count == 4 {
+					fmt.Println("Was not able to send this req for 4 times")
+					types.Acknowledgements.Mx.Lock()
+					types.Acknowledgements.AcknowledgementsList.Remove(ackRef)
+					types.Acknowledgements.Mx.Unlock()
+					if !transmitRequest.Served {
+						fmt.Println("Gonna redirect it to me")
+						transmitRequest.ServerId = types.Id
+						RequestsToSingleElev <- transmitRequest
+					}
+					break
+				}
 			}
 		}
-		i++
-	}
+	}()
 
-	if succesfull {
-		fmt.Println("Sent one order")
-		break
-	} else {
-		fmt.Println("Thought we sent it but actually no")
-		count++
-	}
-}
-if count == 4 {
-	fmt.Println("Connection to slave is lost")
-	elevio.ListOfConnections.List[order.OrderId].Close()
-	// elevio.ListOfConnections.List[order.OrderId] = nil
-	break
+	go func() {
+
+	}()
 }

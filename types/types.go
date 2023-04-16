@@ -2,6 +2,7 @@ package types
 
 import (
 	"Network-go/elevio"
+	"container/list"
 	"sync"
 )
 
@@ -39,6 +40,7 @@ type RequestData struct {
 	ServerId    string
 	ButtonEvent elevio.ButtonEvent
 	Served      bool
+	RequestId   Acknowledgement
 }
 
 type Acknowledgement int
@@ -49,8 +51,8 @@ var MasterId = ""
 var HallRequests []RequestData
 
 type AcknowledgementsStruct struct {
-	Acknowledgements []Acknowledgement
-	Mx               sync.Mutex
+	AcknowledgementsList *list.List
+	Mx                   sync.Mutex
 }
 
 var Acknowledgements AcknowledgementsStruct

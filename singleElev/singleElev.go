@@ -4,6 +4,7 @@ import (
 	"Network-go/elevio"
 	"Network-go/types"
 	"fmt"
+	"math/rand"
 )
 
 type State int
@@ -14,7 +15,7 @@ const (
 	Door_Open State = 2
 )
 
-func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.RequestData) {
+func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev chan types.RequestData, TransmitsInt chan types.RequestData) {
 
 	numFloors := 4
 	current_floor := -1
@@ -67,8 +68,8 @@ func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.Req
 		case a := <-drv_buttons:
 			fmt.Println("Button press", a)
 			//a.Floor += 1
-			Requests <- types.RequestData{Valid: true, ButtonEvent: a, Served: false, ReceiverId: types.Id, ServerId: ""}
-		case b := <-Requests:
+			Requests <- types.RequestData{Valid: true, ButtonEvent: a, Served: false, ReceiverId: types.Id, ServerId: "", RequestId: types.Acknowledgement(rand.Intn(1000000000))}
+		case b := <-RequestsToSingleElev:
 			a := b.ButtonEvent
 			//a.Floor -= 1
 			fmt.Println("Button in order", a)
@@ -80,7 +81,7 @@ func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.Req
 
 			if current_state == Moving {
 				if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-					AskMaster <- b
+					TransmitsInt <- b
 				} else {
 					if a.Floor < current_floor {
 						requests_down = append(requests_down, a)
@@ -98,7 +99,7 @@ func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.Req
 			} else if current_state == Idle {
 				if a.Floor < current_floor {
 					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						AskMaster <- b
+						TransmitsInt <- b
 					} else {
 						fmt.Println("moving down")
 						//fmt.Println(requests_down)
@@ -111,7 +112,7 @@ func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.Req
 
 				} else if a.Floor > current_floor {
 					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						AskMaster <- b
+						TransmitsInt <- b
 					} else {
 						fmt.Println("moving up")
 						requests_up = append(requests_up, a)
@@ -132,13 +133,13 @@ func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.Req
 			} else if current_state == Door_Open {
 				if a.Floor < current_floor {
 					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						AskMaster <- b
+						TransmitsInt <- b
 					} else {
 						requests_down = append(requests_down, a)
 					}
 				} else if a.Floor > current_floor {
 					if curState == types.Slave && a.Button != elevio.BT_Cab && types.Id != b.ServerId {
-						AskMaster <- b
+						TransmitsInt <- b
 					} else {
 						requests_up = append(requests_up, a)
 					}
@@ -286,7 +287,7 @@ func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.Req
 						indicated_direction = elevio.BT_Cab
 						if request_here.Valid {
 							if curState == types.Slave && request_here.Request.Button != elevio.BT_Cab {
-								AskMaster <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: ""}
+								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: ""}
 							} else {
 								requests_down = append(requests_down, request_here.Request)
 							}
@@ -300,7 +301,7 @@ func SingleElevatorRun(Requests chan types.RequestData, AskMaster chan types.Req
 						indicated_direction = elevio.BT_Cab
 						if request_here.Valid {
 							if curState == types.Slave && request_here.Request.Button != elevio.BT_Cab {
-								AskMaster <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: ""}
+								TransmitsInt <- types.RequestData{Valid: true, ButtonEvent: request_here.Request, Served: false, ReceiverId: types.Id, ServerId: ""}
 							} else {
 								requests_up = append(requests_up, request_here.Request)
 							}
