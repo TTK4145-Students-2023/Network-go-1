@@ -40,19 +40,22 @@ type RequestData struct {
 	ServerId    string
 	ButtonEvent elevio.ButtonEvent
 	Served      bool
-	RequestId   Acknowledgement
+	RequestId   int
+	SenderId    string
 }
-
-type Acknowledgement int
 
 var Id string
 var MasterId = ""
 
 var HallRequests []RequestData
 
-type AcknowledgementsStruct struct {
+type AcknowledgementsListStruct struct {
 	AcknowledgementsList *list.List
 	Mx                   sync.Mutex
 }
+type Acknowledgements struct {
+	AcknowledgementId int
+	SenderId          string
+}
 
-var Acknowledgements AcknowledgementsStruct
+var AcknowledgementsLists AcknowledgementsListStruct

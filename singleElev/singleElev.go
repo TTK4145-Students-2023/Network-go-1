@@ -7,6 +7,8 @@ import (
 	"math/rand"
 )
 
+var Port_name string
+
 type State int
 
 const (
@@ -23,7 +25,7 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 	var door_obstructed bool = false
 	var indicated_direction elevio.ButtonType = elevio.BT_Cab
 
-	elevio.Init("localhost:15657", numFloors)
+	elevio.Init(("localhost:" + Port_name), numFloors)
 
 	var d elevio.MotorDirection = elevio.MD_Up
 
@@ -68,7 +70,7 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 		case a := <-drv_buttons:
 			fmt.Println("Button press", a)
 			//a.Floor += 1
-			Requests <- types.RequestData{Valid: true, ButtonEvent: a, Served: false, ReceiverId: types.Id, ServerId: "", RequestId: types.Acknowledgement(rand.Intn(1000000000))}
+			Requests <- types.RequestData{Valid: true, ButtonEvent: a, Served: false, ReceiverId: types.Id, ServerId: "", RequestId: rand.Intn(1000000000)}
 		case b := <-RequestsToSingleElev:
 			a := b.ButtonEvent
 			//a.Floor -= 1
@@ -207,7 +209,7 @@ func SingleElevatorRun(Requests chan types.RequestData, RequestsToSingleElev cha
 						if s.Button == elevio.BT_HallUp {
 							request_here.Valid = true
 							request_here.Request = s
-							fmt.Println("This is running on floor ", a)
+							//fmt.Println("This is running on floor ", a)
 						} else {
 							elevio.SetButtonLamp(s.Button, s.Floor, false)
 							stop = true

@@ -26,7 +26,7 @@ type HelloMsg struct {
 func main() {
 	// Our id can be anything. Here we pass it on the command line, using
 	//  `go run main.go -id=our_id`
-	flag.StringVar(&types.Id, "id", "", "id of this peer")
+	flag.StringVar(&singleElev.Port_name, "id", "", "id of this peer")
 	flag.Parse()
 
 	// ... or alternatively, we can use the local IP address.
@@ -55,15 +55,16 @@ func main() {
 	TransmitsOut := make(chan types.RequestData, 5)
 	Requests := make(chan types.RequestData, 5)
 	RequestsToSingleElev := make(chan types.RequestData, 5)
-	AcknowledgementsIn := make(chan types.Acknowledgement, 5)
-	AcknowledgementsOut := make(chan types.Acknowledgement, 5)
-	AskMaster := make(chan types.RequestData, 5)
+	AcknowledgementsIn := make(chan types.Acknowledgements, 5)
+	AcknowledgementsOut := make(chan types.Acknowledgements, 5)
 
 	// ... and start the transmitter/receiver pair on some port
 	// These functions can take any number of channels! It is also possible to
 	//  start multiple transmitters/receivers on the same port.
-	go bcast.Transmitter(31616, TransmitsOut, AcknowledgementsOut)
-	go bcast.Receiver(31616, Requests, AcknowledgementsIn)
+	go bcast.Transmitter(31616, TransmitsOut)
+	go bcast.Receiver(31616, Requests)
+	go bcast.Transmitter(31615, AcknowledgementsOut)
+	go bcast.Receiver(31615, AcknowledgementsIn)
 
 	go func() {
 		types.StateIns.Mx.Lock()
@@ -73,6 +74,7 @@ func main() {
 			p := <-peerUpdateCh
 			types.StateIns.Mx.Lock()
 			if p.New != "" {
+				fmt.Println("Found new connection", p.New)
 				if (types.StateIns.State == types.Master && types.Id < p.New) || (types.StateIns.State == types.Slave && types.MasterId < p.New) {
 
 				} else if (types.StateIns.State == types.Master && types.Id > p.New) || (types.StateIns.State == types.Slave && types.MasterId > p.New) {
@@ -90,7 +92,7 @@ func main() {
 		}
 	}()
 
-	go singleElev.SingleElevatorRun(Requests, RequestsToSingleElev, AskMaster)
+	go singleElev.SingleElevatorRun(Requests, RequestsToSingleElev, TransmitsInt)
 
 	go func() {
 		for {
@@ -100,16 +102,18 @@ func main() {
 			curState := types.StateIns.State
 			types.StateIns.Mx.Unlock()
 
-			if request.Valid {
-				AcknowledgementsOut <- request.RequestId
-
+			if request.Valid && request.SenderId != types.Id {
+				fmt.Println("Gonna process one request as ", curState)
 				if curState == types.Master {
 					if !request.Served {
 						if request.ReceiverId != types.Id {
+							fmt.Println("Received a request gonna acknowledge")
+							AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}
 							request.ServerId = request.ReceiverId
-							request.RequestId = types.Acknowledgement(rand.Intn(1000000000))
+							request.RequestId = rand.Intn(1000000000)
 							TransmitsInt <- request
 						} else {
+							fmt.Println("Its mine")
 							request.ServerId = request.ReceiverId
 							RequestsToSingleElev <- request
 						}
@@ -120,7 +124,12 @@ func main() {
 				} else {
 					if !request.Served {
 						if request.ServerId == types.Id {
+							fmt.Println("Its from the master gonna acknowledge")
+							AcknowledgementsOut <- types.Acknowledgements{AcknowledgementId: request.RequestId, SenderId: types.Id}
 							RequestsToSingleElev <- request
+						} else if request.ServerId == "" {
+							fmt.Println("Will send it to master")
+							TransmitsInt <- request
 						} else {
 
 						}
@@ -133,45 +142,52 @@ func main() {
 	}()
 
 	go func() {
-		types.Acknowledgements.Mx.Lock()
-		types.Acknowledgements.AcknowledgementsList = list.New()
-		types.Acknowledgements.Mx.Unlock()
+		types.AcknowledgementsLists.Mx.Lock()
+		types.AcknowledgementsLists.AcknowledgementsList = list.New()
+		types.AcknowledgementsLists.Mx.Unlock()
 		for {
 			acknowledgementsIn := <-AcknowledgementsIn
-			types.Acknowledgements.Mx.Lock()
-			for item := types.Acknowledgements.AcknowledgementsList.Front(); item != nil; item = item.Next() {
-				if item.Value == acknowledgementsIn {
-					item.Value = -1
+			if acknowledgementsIn.SenderId != types.Id {
+				fmt.Println("Received an acknowledgement")
+				types.AcknowledgementsLists.Mx.Lock()
+				for item := types.AcknowledgementsLists.AcknowledgementsList.Front(); item != nil; item = item.Next() {
+					//fmt.Println("item: ", item.Value, "")
+					if item.Value == acknowledgementsIn.AcknowledgementId {
+						fmt.Println("Found the acknowledgement in the list")
+						item.Value = -1
+					}
 				}
+				types.AcknowledgementsLists.Mx.Unlock()
 			}
-			types.Acknowledgements.Mx.Unlock()
 		}
 	}()
 
 	go func() {
 		for {
 			transmitRequest := <-TransmitsInt
-			types.Acknowledgements.Mx.Lock()
-			ackRef := types.Acknowledgements.AcknowledgementsList.PushBack(transmitRequest.RequestId)
-			types.Acknowledgements.Mx.Unlock()
+			types.AcknowledgementsLists.Mx.Lock()
+			ackRef := types.AcknowledgementsLists.AcknowledgementsList.PushBack(transmitRequest.RequestId)
+			types.AcknowledgementsLists.Mx.Unlock()
 
 			count := 0
 			for {
+				transmitRequest.SenderId = types.Id
 				TransmitsOut <- transmitRequest
 
 				var i int
 				var succesfull bool
-				for end := time.Now().Add(time.Millisecond * 10); ; {
-					if i&0xff == 0 { // Check in every 256th iteration
-						types.Acknowledgements.Mx.Lock()
-						succesfull = (ackRef.Value == types.Acknowledgement(-1))
+				for end := time.Now().Add(time.Millisecond * 100); ; {
+					if i&0xffff == 0 { // Check in every 0xffff + 1 iteration
+						types.AcknowledgementsLists.Mx.Lock()
+						succesfull = (ackRef.Value == -1)
 
 						if succesfull {
-							types.Acknowledgements.AcknowledgementsList.Remove(ackRef)
-							types.Acknowledgements.Mx.Unlock()
+							fmt.Println("The request sent is acknowledged")
+							types.AcknowledgementsLists.AcknowledgementsList.Remove(ackRef)
+							types.AcknowledgementsLists.Mx.Unlock()
 							break
 						} else {
-							types.Acknowledgements.Mx.Unlock()
+							types.AcknowledgementsLists.Mx.Unlock()
 						}
 
 						if time.Now().After(end) {
@@ -192,9 +208,9 @@ func main() {
 
 				if count == 4 {
 					fmt.Println("Was not able to send this req for 4 times")
-					types.Acknowledgements.Mx.Lock()
-					types.Acknowledgements.AcknowledgementsList.Remove(ackRef)
-					types.Acknowledgements.Mx.Unlock()
+					types.AcknowledgementsLists.Mx.Lock()
+					types.AcknowledgementsLists.AcknowledgementsList.Remove(ackRef)
+					types.AcknowledgementsLists.Mx.Unlock()
 					if !transmitRequest.Served {
 						fmt.Println("Gonna redirect it to me")
 						transmitRequest.ServerId = types.Id
@@ -206,7 +222,5 @@ func main() {
 		}
 	}()
 
-	go func() {
-
-	}()
+	select {}
 }
